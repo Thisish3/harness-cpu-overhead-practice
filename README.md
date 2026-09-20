@@ -55,6 +55,15 @@ B. pydantic v2 (Rust core):       16.12 ms  ( 3.22 us/call)
 Rust로 재작성한 이유)을 하니스의 실제 사용 패턴(반복되는 tool_use 검증)에 맞춰 직접
 재현/측정한 것.
 
+## [pipeline/](pipeline/) — 실제로 돌아가는 하니스 + 서빙 엔진
+
+위 두 벤치마크는 합성 상황이었다. `pipeline/`은 실제 HuggingFace 모델(Qwen2.5-0.5B-Instruct)을
+로딩해서 두 최적화를 진짜 에이전트 루프 안에 넣고 end-to-end로 돌린다. vLLM을 원래 서빙
+엔진으로 쓰려 했으나 이 머신(M2 Mac, CUDA 없음)에서 pip wheel 부재·Dockerfile.cpu 빌드
+이슈·Docker Model Runner 활성화 실패(재부팅 필요한 디스크 마운트 버그)로 막혀서, vLLM과
+동일한 OpenAI 호환 API 스키마를 쓰는 로컬 스텁 서버로 대체함 — `harness.py`는 서버 주소만
+바꾸면 실제 vLLM에 그대로 붙는다. 자세한 내용과 실측 결과는 [pipeline/README.md](pipeline/README.md).
+
 ## 정직한 한계
 
 - **artifact1은 빅오 클래스를 바꾸는 최적화가 아님.** LLM API는 스테이트리스라 매 호출마다
