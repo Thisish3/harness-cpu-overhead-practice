@@ -25,8 +25,9 @@ Qwen2.5-0.5B-Instruct를 돌리고, 프로덕션에서는 같은 코드가 진�
 |---|---|
 | [`tools.py`](tools.py) | 샌드박스 파일 도구(read/write/list) + pydantic 입력 검증 모델 |
 | [`server.py`](server.py) | vLLM/OpenAI 호환 `/v1/chat/completions` 스텁 (내부는 HF Qwen2.5-0.5B-Instruct) |
-| [`harness.py`](harness.py) | 실제 에이전트 루프 — 증분 직렬화(artifact1) + pydantic 검증(artifact2) 적용, 하니스 CPU 시간과 모델 추론 시간을 분리 계측 |
-| [`run_demo.py`](run_demo.py) | 데모 실행: "fib.py를 써라" 태스크를 실제로 시켜본다 |
+| [`harness.py`](harness.py) | **직접 짠** 에이전트 루프 — 증분 직렬화(artifact1) + pydantic 검증(artifact2) 적용, 하니스 CPU 시간과 모델 추론 시간을 분리 계측 |
+| [`run_demo.py`](run_demo.py) | `harness.py` 데모 실행: "fib.py를 써라" 태스크를 실제로 시켜본다 |
+| [`langgraph_harness.py`](langgraph_harness.py) | **진짜 LangGraph**(`StateGraph`, Pregel 실행 엔진) 버전 — 같은 도구/검증을 재사용하되 루프를 직접 짜지 않고 LangGraph의 `agent`↔`tools` 그래프로 구성. `langchain_openai.ChatOpenAI`로 서빙 엔진에 접속하므로 `server.py`든 진짜 vLLM/SGLang이든(둘 다 OpenAI 호환 엔드포인트를 노출) `base_url`만 바꾸면 그대로 동작 |
 
 ## 실행 방법
 ```bash
@@ -53,6 +54,25 @@ python3 run_demo.py          # 실제 에이전틱 태스크 1턴 실행
 지금 이 데모는 "가속 전"의 스냅샷이고, artifact1/2의 400턴/5000콜 누적 벤치마크가 "가속 후"
 시나리오를 미리 보여주는 셈.
 
+## LangGraph 버전 실측 결과
+```bash
+python3 langgraph_harness.py
+```
+```
+태스크: write_file로 greeting.txt를 만들어라 ('hello from langgraph')
+
+최종 응답: The file named `greeting.txt` has been successfully written with the
+           text 'hello from langgraph' inside it. The size of this file is 20 bytes.
+
+=== LangGraph 실행 실측 ===
+super-step 수(Plan→Execute→Update 반복):  3
+하니스 CPU(도구 검증):              0.02 ms
+모델 왕복(agent 노드, 네트워크+추론): 15260.65 ms
+```
+`sandbox/greeting.txt`에 실제로 정확한 내용이 써진 것까지 확인함. 3 super-step
+(agent→tools→agent) 구성은 "🔄 요청 처리 파이프라인 비교" 페이지의 4-1(LangGraph Pregel
+딥다이브)에서 문서로만 정리했던 Plan→Execute→Update 구조를 실제 실행으로 재현한 것.
+
 ## 정직한 한계
 - Qwen2.5-**0.5B**는 아주 작은 모델이라 tool-call 체이닝이 불안정함 — 이번 데모에서도
   `write_file`은 정상 호출했지만 이어서 `read_file`을 호출하라는 지시는 따르지 않고 텍스트로
@@ -65,3 +85,7 @@ python3 run_demo.py          # 실제 에이전틱 태스크 1턴 실행
 - MPS(Apple GPU) 백엔드로 처음 시도했으나 서버가 조용히 크래시함(트레이스백 없이 프로세스
   종료) — 원인 특정 안 하고 CPU로 우회함. MPS 관련 PyTorch 연산 지원 이슈로 추정되나 확인은
   못 했음.
+- `langgraph_harness.py`도 실제 SGLang은 못 붙여봄 — SGLang은 순수 Python wheel(`py3-none-any`)이
+  존재해서 macOS에 설치 자체는 되지만, 실제 서빙 런타임(`sglang.srt`)이 CUDA 전제인지까지는
+  확인 안 하고 시간 관계상 vLLM과 같은 스텁 경로로 대체함 — SGLang이 진짜 macOS CPU에서 서빙
+  가능한지는 미검증.

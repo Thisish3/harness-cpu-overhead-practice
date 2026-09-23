@@ -91,14 +91,18 @@ def chat_completions(req: ChatCompletionRequest):
         message["tool_calls"] = tool_calls
         finish_reason = "tool_calls"
 
+    prompt_tokens = int(inputs["input_ids"].shape[1])
+    completion_tokens = int(new_tokens.shape[0])
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
         "object": "chat.completion",
+        "created": int(time.time()),
         "model": req.model,
         "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
         "usage": {
-            "prompt_tokens": int(inputs["input_ids"].shape[1]),
-            "completion_tokens": int(new_tokens.shape[0]),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
         },
         "_server_timing_ms": {"inference": inference_ms},  # 표준 스펙 밖 -- 하니스 CPU vs 추론 CPU 분리 측정용
     }
